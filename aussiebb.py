@@ -1,4 +1,4 @@
-from datetime import datetime
+import time
 import requests
 
 
@@ -19,13 +19,14 @@ class AussieBB:
     @property
     def customer(self):
         # Check if we do not have the data or if it is stale
-        if self._customer is None or datetime().gmtime() - self._customer_updated > self.cache_refresh:
-            self._customer = self._get_customer()
+        if self._customer is None or time.time() - self._customer_updated > self.cache_refresh:
+            self.customer = self._get_customer()
         return self._customer
 
     @customer.setter
     def customer(self, value):
         self._customer = value
+        self._customer_updated = time.time()
 
     def __init__(self, cache_refresh=120000):
         """
@@ -33,6 +34,7 @@ class AussieBB:
         :param cache_refresh: Duration in milliseconds data requested from the API is considered current. Anything
                               accessed after this duration will trigger a new API request. Defaults to 120 seconds.
         """
+
         self._cookie_dict = None
         self._refresh_token = None
         self._token_expiry = None
