@@ -373,7 +373,7 @@ class HistoricUsageDict:
         :exception KeyError: Key format does not match YYYY-MM-DD
         """
 
-        if re.match(r'^\d{4}-\d{2}-\d{2}$'):
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', key):
             self._history[key] = value
         else:
             raise KeyError()
