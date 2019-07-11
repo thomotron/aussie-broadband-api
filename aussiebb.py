@@ -372,6 +372,35 @@ class HistoricUsageDict:
         else:
             raise KeyError()
 
+    @staticmethod
+    def create(abb_api, service, endpoint=None):
+        # If we're not using any specific endpoint, use the current month
+        if endpoint is None:
+            current_time = time.localtime()
+            endpoint = 'broadband/{}/usage/{}/{}'.format(str(service.service_id), current_time.tm_year, current_time.tm_mon)
+
+        req = abb_api.authenticated_get(endpoint)
+
+        # Unpack the response JSON
+        json = req.json()
+
+        # Grab and store the results
+        output = {}
+        for day in json['data']:
+            date = day['date']
+            download = day['download']
+            upload = day['upload']
+
+            output[date] = HistoricUsage(date, download, upload)
+
+        # Check if there is another page
+        if json['pagination']['prev']:
+            # Recurse to the previous page and merge the dictionary with this one
+            return output.update(HistoricUsageDict.create(abb_api, service, endpoint=json['pagination']['prev']))
+        else:
+            # Return what we have
+            return output
+
 
 class HistoricUsage:
     """
