@@ -1,3 +1,4 @@
+import re
 import time
 import requests
 
@@ -212,17 +213,27 @@ class NBNService:
 
     @property
     def usage_overview(self):
-        if not self._usage_overview:
-            self._usage_overview = self._get_usage_overview()
+        # Check if we do not have the data or if it is stale
+        if not self._usage_overview or time.time() - self._usage_overview_updated > self._abb_api.cache_refresh:
+            self.usage_overview = self._get_usage_overview()
         return self._usage_overview
 
     @usage_overview.setter
     def usage_overview(self, value):
         self._usage_overview = value
+        self._usage_overview_updated = time.time()
 
-    # @property
-    # def historic_usage(self, year):
-    #     if
+    @property
+    def historic_usage(self):
+        # Check if we do not have the data or it is stale
+        if not self._usage_overview or time.time() - self._historic_usage_updated > self._abb_api.cache_refresh:
+            self.usage_overview = self._get_usage_overview()
+        return self._usage_overview
+
+    @historic_usage.setter
+    def historic_usage(self, value):
+        self._historic_usage = value
+        self._historic_usage_updated = time.time()
 
     def __init__(self, abb_api, service_id, plan, description, connection_details, next_bill, open_date, rollover_day,
                  ip_addresses, address):
@@ -238,6 +249,10 @@ class NBNService:
         self.address = address
 
         self._usage_overview = None
+        self._usage_overview_updated = 0
+
+        self._historic_usage = None
+        self._historic_usage_updated = 0
 
     def _get_usage_overview(self):
         req = self._abb_api.authenticated_get('broadband/' + str(self.service_id) + '/usage')
@@ -259,8 +274,28 @@ class NBNService:
         except Exception:
             raise Exception('Failed to populate ServiceUsageOverview')
 
-    # def _get_historic_usage(self):
-    #     req = self._abb_api.authenticated_get('broadband/' + str(self.service_id) + '/usage/' + )
+    def _get_historic_usage(self, endpoint=None):
+        # If we're not using any specific endpoint, use the current month
+        if not endpoint:
+            current_time = time.localtime()
+            endpoint = 'broadband/{}/usage/{}/{}'.format(str(self.service_id), current_time.tm_year, current_time.tm_mon)
+
+        req = self._abb_api.authenticated_get(endpoint)
+
+        # Unpack the response JSON
+        json = req.json()
+
+        # Grab and store the results
+        _dict = {}
+        for day in json['data']:
+            date = day['date']
+            download = day['download']
+            upload = day['upload']
+
+            _dict[date] = HistoricUsage(date, download, upload)
+
+        #
+
 
 
 class OverviewServiceUsage:
@@ -279,20 +314,71 @@ class OverviewServiceUsage:
         self.last_update = last_update
 
 
-# class HistoricServiceUsage:
-#     """
-#     Historic usage data.
-#     Usage is in megabytes (10^6 bytes).
-#     """
-#
-#     def __init__(self, abb_api):
-#         self._abb_api = abb_api
-#         self._usage_by_year_then_by_month_then_by_day = {}
-#
-#     def __getitem__(self, key):
-#         if not key in self._usage_by_year_then_by_month_then_by_day:
-#             raise KeyError()
-#         return self._usage_by_year_then_by_month_then_by_day[key]
+class HistoricUsageDict:
+    """
+    Historic usage data dictionary wrapper to handle funky dates.
+    Access with YYYY-MM-DD date format. Specifying only YYYY or YYYY-MM will fill in the remaining months and days.
+    """
+
+    def __init__(self, abb_api, history={}):
+        self._abb_api = abb_api
+        self._history = history
+
+    def __getitem__(self, key):
+        output = []
+        match = re.match(r'^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$', key) # 4-digit year, optional 1- or 2-digit month, optional 1- or 2-digit day
+        if match:
+            year = match.group(1)
+            month = '{:0>2}'.format(match.group(2)) if match.group(2) else ''  # Pad month with a zero
+            day = '{:0>2}'.format(match.group(3)) if match.group(3) else ''  # Pad day with a zero
+
+            # Get everything from that year
+            if not month:
+                for month in range(1, 12):
+                    for day in range(1, 30):
+                        key = '{}-{:0<2}-{:0<2}'.format(year, month, day)
+                        output.append(self._history[key])
+                return output
+
+            # Get everything from that month
+            if not day:
+                for day in range(1,30):
+                    key = '{}-{}-{:0<2}'.format(year, month, day)
+                    output.append(self._history[key])
+                return output
+
+            # Get the specific day
+            key = '{}-{}-{}'.format(year, month, day)
+            return self._history[key]
+        else:
+            raise KeyError()
+
+    def __setitem__(self, key, value):
+        """
+        Add or update an item within the dictionary.
+        All keys must match a YYYY-MM-DD date format.
+        :param key: Key to add or update
+        :param value: Value to set
+        :exception KeyError: Key format does not match YYYY-MM-DD
+        """
+
+        if re.match(r'^\d{4}-\d{2}-\d{2}$'):
+            self._history[key] = value
+        else:
+            raise KeyError()
+
+
+class HistoricUsage:
+    """
+    Historic usage data.
+    Usage is in megabytes (10^6 bytes)
+    """
+
+    def __init__(self, date, download=0, upload=0):
+        self.date = date
+        self.download = download
+        self.upload = upload
+
 
 class NBNDetails:
     """
