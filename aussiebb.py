@@ -21,7 +21,7 @@ class AussieBB:
     def customer(self):
         # Check if we do not have the data or if it is stale
         if self._customer is None or time.time() - self._customer_updated > self.cache_refresh:
-            self.customer = self._get_customer()
+            self.customer = Customer.create(self)
         return self._customer
 
     @customer.setter
@@ -110,86 +110,6 @@ class AussieBB:
 
         return req
 
-    def _get_customer(self):
-        """
-        Gets the customer information associated with this account.
-        :return: Customer information
-        """
-
-        if not self.authenticated:
-            raise Exception('Cannot get customer data while unauthenticated')
-
-        req = requests.get(self.api_base_url + 'customer', cookies=self._cookie_dict)
-
-        # Make sure we have a good status code
-        if req.status_code >= 400:
-            raise Exception('Something went wrong when requesting {}, server returned status {}'.format(
-                self.api_base_url + 'customer', req.status_code))
-
-        # Unpack the response JSON
-        json = req.json()
-
-        # Try create a Customer from the response
-        try:
-            customer_number = json['customer_number']
-            billing_name = json['billing_name']
-            bill_format = json['billformat']
-            brand = json['brand']
-            address = '{}, {} {} {}'.format(json['postalAddress']['address'], json['postalAddress']['town'],
-                                            json['postalAddress']['state'], json['postalAddress']['postcode'])
-            phone = json['phone']
-            emails = json['email']
-            payment_method = json['payment_method']
-            suspended = json['isSuspended']
-            balance = json['accountBalanceCents'] / 100
-
-            services = []
-            for service in json['services']['NBN']:  # I only have NBN, if you have something else please get in touch.
-                try:
-                    service_id = service['service_id']
-                    plan = service['plan']
-                    description = service['description']
-                    next_bill = service['nextBillDate']
-                    open_date = service['openDate']
-                    rollover_day = service['usageAnniversary']
-                    ip_addresses = service['ipAddresses']
-                    address = '{} {} {}, {} {} {}'.format(service['address']['streetnumber'],
-                                                          service['address']['streetname'],
-                                                          service['address']['streettype'],
-                                                          service['address']['locality'],
-                                                          service['address']['state'],
-                                                          service['address']['postcode'])
-
-                    # Prepend the unit type and number if there is one
-                    if service['address']['subaddresstype'] and service['address']['subaddressnumber']:
-                        address = '{} {}, {}'.format(service['address']['subaddresstype'],
-                                                     service['address']['subaddressnumber'], address)
-
-                    # Try to populate the connection details
-                    try:
-                        connection_type = service['nbnDetails']['product']
-                        poi = service['nbnDetails']['poiName']
-                        cvc_graph_url = service['nbnDetails']['cvcGraph']
-                        download_potential = service['nbnDetails']['speedPotential']['downloadMbps']
-                        upload_potential = service['nbnDetails']['speedPotential']['uploadMbps']
-                        last_test = service['nbnDetails']['speedPotential']['lastTested']
-
-                        connection_details = NBNDetails(connection_type, poi, cvc_graph_url, download_potential,
-                                                        upload_potential, last_test)
-                    except Exception:
-                        raise Exception('Failed to populate NBNDetails')
-
-                    services.append(
-                        NBNService(self, service_id, plan, description, connection_details, next_bill, open_date,
-                                   rollover_day, ip_addresses, address))
-                except Exception:
-                    raise Exception('Failed to populate NBNService')
-
-            return Customer(customer_number, billing_name, bill_format, brand, address, phone, emails, payment_method,
-                            suspended, balance, services)
-        except Exception:
-            raise Exception('Failed to populate Customer')
-
 
 class Customer:
     """
@@ -211,6 +131,97 @@ class Customer:
         self.balance = balance
         self.services = services
 
+    @staticmethod
+    def create(abb_api):
+        """
+        Creates a new Customer instance containing the customer information associated with the given API instance.
+        :return: New Customer for the given API instance
+        """
+
+        # Have the base API make the request on our behalf
+        req = abb_api.authenticated_get('customer')
+
+        # Unpack the response JSON
+        json = req.json()
+
+        # Ok, gonna look a little messy in here, but it's just unpacking and parsing various bits and pieces starting
+        # with the inner-most objects since they're dependent on everything else.
+
+        # We'll start by iterating over each service
+        services = []
+        for service in json['services']['NBN']:  # I only have NBN, if you have something else please get in touch.
+            try:
+                # Try to populate the connection details for this service
+                try:
+                    connection_details = NBNDetails(
+                        service['nbnDetails']['product'],
+                        service['nbnDetails']['poiName'],
+                        service['nbnDetails']['cvcGraph'],
+                        service['nbnDetails']['speedPotential']['downloadMbps'],
+                        service['nbnDetails']['speedPotential']['uploadMbps'],
+                        service['nbnDetails']['speedPotential']['lastTested']
+                    )
+                except Exception:
+                    raise Exception('Failed to populate ' + type(NBNDetails).__name__)
+
+                # Format this service's address
+                address = '{} {} {}, {} {} {}'.format(
+                    service['address']['streetnumber'],
+                    service['address']['streetname'],
+                    service['address']['streettype'],
+                    service['address']['locality'],
+                    service['address']['state'],
+                    service['address']['postcode']
+                )
+
+                # Prepend the unit type and number if there is one
+                if service['address']['subaddresstype'] and service['address']['subaddressnumber']:
+                    address = '{} {}, {}'.format(service['address']['subaddresstype'], service['address']['subaddressnumber'], address)
+
+                # Create a new NBNService instance and add it to the list
+                services.append(
+                    NBNService(
+                        abb_api,
+                        service['service_id'],
+                        service['plan'],
+                        service['description'],
+                        connection_details,
+                        service['nextBillDate'],
+                        service['openDate'],
+                        service['usageAnniversary'],
+                        service['ipAddresses'],
+                        address
+                    )
+                )
+            except Exception:
+                raise Exception('Failed to populate ' + type(NBNService).__name__)
+
+        # Then we will parse the remaining fields and plug everything into a new Customer instance
+        try:
+            # Format the address
+            address = '{}, {} {} {}'.format(
+                json['postalAddress']['address'],
+                json['postalAddress']['town'],
+                json['postalAddress']['state'],
+                json['postalAddress']['postcode']
+            )
+
+            return Customer(
+                json['customer_number'],
+                json['billing_name'],
+                json['billformat'],
+                json['brand'],
+                address,
+                json['phone'],
+                json['email'],
+                json['payment_method'],
+                json['isSuspended'],
+                json['accountBalanceCents'] / 100,
+                services
+            )
+        except Exception:
+            raise Exception('Failed to populate ' + type(Customer).__name__)
+
 
 class NBNService:
     """
@@ -226,7 +237,7 @@ class NBNService:
     def usage_overview(self):
         # Check if we do not have the data or if it is stale
         if not self._usage_overview or time.time() - self._usage_overview_updated > self._abb_api.cache_refresh:
-            self.usage_overview = self._get_usage_overview()
+            self.usage_overview = OverviewServiceUsage.create(self._abb_api, self)
         return self._usage_overview
 
     @usage_overview.setter
@@ -238,7 +249,7 @@ class NBNService:
     def historic_usage(self):
         # Check if we do not have the data or it is stale
         if not self._usage_overview or time.time() - self._historic_usage_updated > self._abb_api.cache_refresh:
-            self.usage_overview = self._get_usage_overview()
+            self.usage_overview = HistoricUsageDict.create(self._abb_api, self)
         return self._usage_overview
 
     @historic_usage.setter
@@ -265,48 +276,6 @@ class NBNService:
         self._historic_usage = None
         self._historic_usage_updated = 0
 
-    def _get_usage_overview(self):
-        req = self._abb_api.authenticated_get('broadband/' + str(self.service_id) + '/usage')
-
-        # Unpack the response JSON
-        json = req.json()
-
-        try:
-            usage_total = json['usedMb']
-            usage_download = json['downloadedMb']
-            usage_upload = json['uploadedMb']
-            usage_remaining = json['remainingMb']
-            days_total = json['daysTotal']
-            days_remaining = json['daysRemaining']
-            last_update = json['lastUpdated']
-
-            return OverviewServiceUsage(usage_total, usage_download, usage_upload, usage_remaining, days_total,
-                                        days_remaining, last_update)
-        except Exception:
-            raise Exception('Failed to populate ServiceUsageOverview')
-
-    def _get_historic_usage(self, endpoint=None):
-        # If we're not using any specific endpoint, use the current month
-        if not endpoint:
-            current_time = time.localtime()
-            endpoint = 'broadband/{}/usage/{}/{}'.format(str(self.service_id), current_time.tm_year, current_time.tm_mon)
-
-        req = self._abb_api.authenticated_get(endpoint)
-
-        # Unpack the response JSON
-        json = req.json()
-
-        # Grab and store the results
-        _dict = {}
-        for day in json['data']:
-            date = day['date']
-            download = day['download']
-            upload = day['upload']
-
-            _dict[date] = HistoricUsage(date, download, upload)
-
-        #
-
 
 
 class OverviewServiceUsage:
@@ -323,6 +292,31 @@ class OverviewServiceUsage:
         self.days_total = days_total
         self.days_remaining = days_remaining
         self.last_update = last_update
+
+    @staticmethod
+    def create(abb_api: AussieBB, service: NBNService):
+        """
+        Creates a new OverviewServiceUsage instance containing usage overview information associated with the given service.
+        :return: New OverviewServiceUsage for the given service
+        """
+
+        req = abb_api.authenticated_get('broadband/' + str(service.service_id) + '/usage')
+
+        # Unpack the response JSON
+        json = req.json()
+
+        try:
+            return OverviewServiceUsage(
+                json['usedMb'],
+                json['downloadedMb'],
+                json['uploadedMb'],
+                json['remainingMb'],
+                json['daysTotal'],
+                json['daysRemaining'],
+                json['lastUpdated']
+            )
+        except Exception:
+            raise Exception('Failed to populate ' + type(OverviewServiceUsage).__name__)
 
 
 class HistoricUsageDict:
@@ -353,7 +347,7 @@ class HistoricUsageDict:
 
             # Get everything from that month
             if not day:
-                for day in range(1,30):
+                for day in range(1, 30):
                     key = '{}-{}-{:0<2}'.format(year, month, day)
                     output.append(self._history[key])
                 return output
