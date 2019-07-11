@@ -29,6 +29,17 @@ class AussieBB:
         self._customer = value
         self._customer_updated = time.time()
 
+    @property
+    def services(self):
+        """
+        An alias for AussieBB.customer.services.
+        """
+        return self.customer.services
+
+    @services.setter
+    def services(self, value):
+        self.customer.services = value
+
     def __init__(self, cache_refresh=120000):
         """
         Creates a new Aussie Broadband API instance.
