@@ -389,7 +389,7 @@ class HistoricUsageDict:
         """
         Retrieves the usage for a given day, month, or year.
         :param key: Date string formatted as YYYY-MM-DD, YYYY-MM, or YYYY
-        :return: HistoricUsage instance or list of HistoricUsages depending on date format provided
+        :return: List of HistoricUsage instances within the date provided
         """
         output = []
         match = re.match(r'^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$', key)  # 4-digit year, optional 1- or 2-digit month, optional 1- or 2-digit day
@@ -421,7 +421,13 @@ class HistoricUsageDict:
 
             # Get the specific day
             key = self._key_format.format(year, month, day)
-            return self._try_get_date(key)
+            usage = self._try_get_date(key)
+            if usage:
+                # Listify to keep consistent
+                return [usage]
+            else:
+                # Got nothing, return an empty list instead
+                return []
         else:
             raise KeyError()
 
