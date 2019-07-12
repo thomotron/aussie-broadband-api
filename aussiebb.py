@@ -1,5 +1,6 @@
 import re
 import time
+import calendar
 import requests
 
 
@@ -325,40 +326,59 @@ class HistoricUsageDict:
     Access with YYYY-MM-DD date format. Specifying only YYYY or YYYY-MM will fill in the remaining months and days.
     """
 
-    def __init__(self, abb_api, history={}):
-        self._abb_api = abb_api
-        self._history = history
+    _key_format = '{}-{:0>2}-{:0>2}'
 
-    def __getitem__(self, key):
+    def __init__(self, abb_api: AussieBB, service: NBNService):
+        """
+        Creates a new HistoricUsageDict instance for the given service.
+        :param abb_api: AussieBB API instance
+        :param service: Service to request history for
+        """
+
+        self._abb_api = abb_api
+        self._service = service
+        self._history = {}
+
+    def __getitem__(self, key: str):
+        """
+        Retrieves the usage for a given day, month, or year.
+        """
+
         output = []
-        match = re.match(r'^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$', key) # 4-digit year, optional 1- or 2-digit month, optional 1- or 2-digit day
+        match = re.match(r'^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$', key)  # 4-digit year, optional 1- or 2-digit month, optional 1- or 2-digit day
         if match:
-            year = match.group(1)
-            month = '{:0>2}'.format(match.group(2)) if match.group(2) else ''  # Pad month with a zero
-            day = '{:0>2}'.format(match.group(3)) if match.group(3) else ''  # Pad day with a zero
+            year = int(match.group(1))
+            month = int(match.group(2)) if match.group(2) else None  # Pad month with a zero
+            day = int(match.group(3)) if match.group(3) else None  # Pad day with a zero
 
             # Get everything from that year
             if not month:
                 for month in range(1, 12):
-                    for day in range(1, 30):
-                        key = '{}-{:0<2}-{:0<2}'.format(year, month, day)
-                        output.append(self._history[key])
+                    for day in calendar.monthrange(year, month):
+                        key = self._key_format.format(year, month, day)
+                        usage = self._try_get_date(key)
+                        if usage:
+                            output.append(usage)
+
                 return output
 
             # Get everything from that month
             if not day:
-                for day in range(1, 30):
-                    key = '{}-{}-{:0<2}'.format(year, month, day)
-                    output.append(self._history[key])
+                for day in calendar.monthrange(year, month):
+                    key = self._key_format.format(year, month, day)
+                    usage = self._try_get_date(key)
+                    if usage:
+                        output.append(usage)
+
                 return output
 
             # Get the specific day
-            key = '{}-{}-{}'.format(year, month, day)
-            return self._history[key]
+            key = self._key_format.format(year, month, day)
+            return self._try_get_date(key)
         else:
             raise KeyError()
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: HistoricUsage):
         """
         Add or update an item within the dictionary.
         All keys must match a YYYY-MM-DD date format.
@@ -372,34 +392,42 @@ class HistoricUsageDict:
         else:
             raise KeyError()
 
-    @staticmethod
-    def create(abb_api, service, endpoint=None):
-        # If we're not using any specific endpoint, use the current month
-        if endpoint is None:
-            current_time = time.localtime()
-            endpoint = 'broadband/{}/usage/{}/{}'.format(str(service.service_id), current_time.tm_year, current_time.tm_mon)
-
-        req = abb_api.authenticated_get(endpoint)
-
-        # Unpack the response JSON
-        json = req.json()
-
-        # Grab and store the results
-        output = {}
-        for day in json['data']:
-            date = day['date']
-            download = day['download']
-            upload = day['upload']
-
-            output[date] = HistoricUsage(date, download, upload)
-
-        # Check if there is another page
-        if json['pagination']['prev']:
-            # Recurse to the previous page and merge the dictionary with this one
-            return output.update(HistoricUsageDict.create(abb_api, service, endpoint=json['pagination']['prev']))
+    def _try_get_date(self, key: str):
+        if key in self._history:
+            return self._history[key]
         else:
-            # Return what we have
-            return output
+            match = re.match(r'^(\d{4})-(\d{2})-(\d{2})', key)
+            year = int(match.group(1))
+            month = int(match.group(2))
+            day = int(match.group(3))
+
+            # The API handles months as the month the usage period started in, so if a period starts on the 28th of June
+            # it will provide the 28th-30th of June and the 1st-27th of July. To get around this, we'll check if the day
+            # comes before the rollover. If it does, we'll make a request for the previous month.
+            if day < self._service.rollover_day:
+                if month > 1:
+                    month = month - 1
+                else:
+                    year = year - 1
+                    month = 12
+
+            # Format the endpoint to the actual month the API is expecting for this date
+            endpoint = 'broadband/{}/usage/{}/{}'.format(str(self._service.service_id), year, month)
+            req = self._abb_api.authenticated_get(endpoint)
+
+            json = req.json()
+
+            # Cache all dates within the response
+            for date in json['data']:
+                self._history[date['date']] = HistoricUsage(date['date'], date['download'], date['upload'])
+
+            # Check if we have the entry now
+            if key in self._history:
+                # Return it
+                return self._history[key]
+            else:
+                # The entry still isn't here, so return nothing
+                return None
 
 
 class HistoricUsage:
