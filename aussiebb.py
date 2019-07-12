@@ -20,6 +20,10 @@ class AussieBB:
 
     @property
     def customer(self):
+        """
+        The Customer instance associated with the current login.
+        :return: The Customer instance associated with the current login
+        """
         # Check if we do not have the data or if it is stale
         if self._customer is None or time.time() - self._customer_updated > self.cache_refresh:
             self.customer = Customer.create(self)
@@ -236,6 +240,10 @@ class NBNService:
 
     @property
     def usage_overview(self):
+        """
+        The usage overview for the current month.
+        :return: Usage overview for the current month
+        """
         # Check if we do not have the data or if it is stale
         if not self._usage_overview or time.time() - self._usage_overview_updated > self._abb_api.cache_refresh:
             self.usage_overview = OverviewServiceUsage.create(self._abb_api, self)
@@ -248,6 +256,10 @@ class NBNService:
 
     @property
     def historic_usage(self):
+        """
+        Usage history.
+        :return: Usage history
+        """
         # Check if we do not have the data or it is stale
         if not self._historic_usage or time.time() - self._historic_usage_updated > self._abb_api.cache_refresh:
             self.historic_usage = HistoricUsageDict(self._abb_api, self)
