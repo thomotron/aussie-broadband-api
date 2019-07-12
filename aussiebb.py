@@ -460,7 +460,7 @@ class HistoricUsageDict:
         if key in self._history:
             return self._history[key]
         else:
-            match = re.match(self._key_regex, key)
+            match = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', key)
             year = int(match.group(1))
             month = int(match.group(2))
             day = int(match.group(3))
