@@ -304,24 +304,24 @@ class NBNService:
         self._usage_overview_updated = time.time()
 
     @property
-    def historic_usage(self) -> HistoricUsageDict:
+    def usage_history(self) -> UsageHistoryDict:
         """
         Usage history.
         :return: Usage history
         """
         # Check if we do not have the data or it is stale
-        if not self._historic_usage or time.time() - self._historic_usage_updated > self._abb_api.cache_refresh:
-            self.historic_usage = HistoricUsageDict(self._abb_api, self)
-        return self._historic_usage
+        if not self._usage_history or time.time() - self._usage_history_updated > self._abb_api.cache_refresh:
+            self.usage_history = UsageHistoryDict(self._abb_api, self)
+        return self._usage_history
 
-    @historic_usage.setter
-    def historic_usage(self, value: HistoricUsageDict):
-        self._historic_usage = value
-        self._historic_usage_updated = time.time()
+    @usage_history.setter
+    def usage_history(self, value: UsageHistoryDict):
+        self._usage_history = value
+        self._usage_history_updated = time.time()
 
     def __init__(self, abb_api: AussieBB, service_id: NBNService, plan: str, description: str,
                  connection_details: NBNDetails, next_bill: datetime, open_date: datetime, rollover_day: int,
-                 ip_addresses: list, address: str) -> historic_usage:
+                 ip_addresses: list, address: str) -> usage_history:
         """
         Creates a new NBNService instance with the given details.
         :param abb_api: AussieBB API instance
@@ -349,8 +349,8 @@ class NBNService:
         self._usage_overview = None
         self._usage_overview_updated = 0
 
-        self._historic_usage = None
-        self._historic_usage_updated = 0
+        self._usage_history = None
+        self._usage_history_updated = 0
 
 
 class OverviewServiceUsage:
@@ -405,7 +405,7 @@ class OverviewServiceUsage:
             raise Exception('Failed to populate ' + type(OverviewServiceUsage).__name__)
 
 
-class HistoricUsageDict:
+class UsageHistoryDict:
     """
     Historic usage data dictionary wrapper to handle funky dates.
     Access with YYYY-MM-DD date format. Specifying only YYYY or YYYY-MM will fill in the remaining months and days.
@@ -417,7 +417,7 @@ class HistoricUsageDict:
 
     def __init__(self, abb_api: AussieBB, service: NBNService):
         """
-        Creates a new HistoricUsageDict instance for the given service.
+        Creates a new UsageHistoryDict instance for the given service.
         :param abb_api: AussieBB API instance
         :param service: Service to request history for
         """
@@ -429,7 +429,7 @@ class HistoricUsageDict:
         """
         Retrieves the usage for a given day, month, or year.
         :param key: Date string formatted as YYYY-MM-DD, YYYY-MM, or YYYY
-        :return: List of HistoricUsage instances within the date provided
+        :return: List of UsageHistory instances within the date provided
         """
         output = []
         match = re.match(r'^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$', key)  # 4-digit year, optional 1- or 2-digit month, optional 1- or 2-digit day
@@ -471,7 +471,7 @@ class HistoricUsageDict:
         else:
             raise KeyError()
 
-    def __setitem__(self, key: str, value: HistoricUsage):
+    def __setitem__(self, key: str, value: UsageHistory):
         """
         Add or update an item within the dictionary.
         All keys must match a YYYY-MM-DD date format.
@@ -484,11 +484,11 @@ class HistoricUsageDict:
         else:
             raise KeyError()
 
-    def _try_get_date(self, key: str) -> Optional[HistoricUsage]:
+    def _try_get_date(self, key: str) -> Optional[UsageHistory]:
         """
         Tries to get usage data for the given date, querying the API if a cached version is not available.
         :param key: Date formatted as YYYY-MM-DD
-        :return: HistoricUsage instance or None if no result
+        :return: UsageHistory instance or None if no result
         """
         if key in self._history:
             return self._history[key]
@@ -516,7 +516,7 @@ class HistoricUsageDict:
 
             # Cache all dates within the response
             for entry in json['data']:
-                self._history[entry['date']] = HistoricUsage(entry['date'], entry['download'], entry['upload'])
+                self._history[entry['date']] = UsageHistory(entry['date'], entry['download'], entry['upload'])
 
             # Check if we have the entry now
             if key in self._history:
@@ -527,7 +527,7 @@ class HistoricUsageDict:
                 return None
 
 
-class HistoricUsage:
+class UsageHistory:
     """
     Historic usage data.
     Usage is in megabytes (10^6 bytes)
@@ -535,7 +535,7 @@ class HistoricUsage:
 
     def __init__(self, date: datetime, download: int = 0, upload: int = 0):
         """
-        Creates a new HistoricUsage instance.
+        Creates a new UsageHistory instance.
         :param date: Date the usage data is for
         :param download: Download usage in megabytes
         :param upload: Upload usage in megabytes
