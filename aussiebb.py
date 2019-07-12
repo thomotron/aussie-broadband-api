@@ -457,9 +457,9 @@ class HistoricUsageDict:
             # comes before the rollover. If it does, we'll make a request for the previous month.
             if day < self._service.rollover_day:
                 if month > 1:
-                    month = month - 1
+                    month -= 1
                 else:
-                    year = year - 1
+                    year -= 1
                     month = 12
 
             # Format the endpoint to the actual month the API is expecting for this date
