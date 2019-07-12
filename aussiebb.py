@@ -248,9 +248,9 @@ class NBNService:
     @property
     def historic_usage(self):
         # Check if we do not have the data or it is stale
-        if not self._usage_overview or time.time() - self._historic_usage_updated > self._abb_api.cache_refresh:
-            self.usage_overview = HistoricUsageDict.create(self._abb_api, self)
-        return self._usage_overview
+        if not self._historic_usage or time.time() - self._historic_usage_updated > self._abb_api.cache_refresh:
+            self.historic_usage = HistoricUsageDict(self._abb_api, self)
+        return self._historic_usage
 
     @historic_usage.setter
     def historic_usage(self, value):
