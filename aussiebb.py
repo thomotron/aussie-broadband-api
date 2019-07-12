@@ -124,8 +124,9 @@ class Customer:
     Contains everything from postal address and communication preferences to services and account permissions.
     """
 
-    def __init__(self, customer_number: int, billing_name: str, bill_format: int, brand: str, address: str, phone: str,
-                 emails: list, payment_method: str, suspended: bool, balance: float, services: list):
+    def __init__(self, customer_number: int, billing_name: str, bill_format: int, brand: str, address: str,
+                 outage_comm_prefs: OutageCommunicationPrefs, phone: str, emails: list, payment_method: str,
+                 suspended: bool, balance: float, services: list, permissions: AccountPermissions):
         """
         Creates a new Customer instance.
         :param customer_number: Customer number
@@ -145,12 +146,14 @@ class Customer:
         self.bill_format = bill_format
         self.brand = brand
         self.address = address
+        self.outage_comm_prefs = outage_comm_prefs
         self.phone = phone
         self.emails = emails
         self.payment_method = payment_method
         self.suspended = suspended
         self.balance = balance
         self.services = services
+        self.permissions = permissions
 
     @staticmethod
     def create(abb_api: AussieBB) -> Customer:
@@ -218,7 +221,35 @@ class Customer:
             except Exception:
                 raise Exception('Failed to populate ' + type(NBNService).__name__)
 
-        # Then we will parse the remaining fields and plug everything into a new Customer instance
+        # Then we'll get the outage communication preferences
+        try:
+            outage_comm_prefs = OutageCommunicationPrefs(
+                json['communicationPreferences']['outages']['sms'],
+                json['communicationPreferences']['outages']['sms247'],
+                json['communicationPreferences']['outages']['email']
+            )
+        except Exception:
+            raise Exception('Failed to populate ' + type(OutageCommunicationPrefs).__name__)
+
+        # Then the account permissions
+        try:
+            permissions = AccountPermissions(
+                json['permissions']['createPaymentPlan'],
+                json['permissions']['updatePaymentDetails'],
+                json['permissions']['createContact'],
+                json['permissions']['updateContacts'],
+                json['permissions']['updateCustomer'],
+                json['permissions']['changePassword'],
+                json['permissions']['createTickets'],
+                json['permissions']['makePayment'],
+                json['permissions']['purchaseDatablocksNextBill'],
+                json['permissions']['createOrder'],
+                json['permissions']['viewOrders']
+            )
+        except Exception:
+            raise Exception('Failed to populate ' + type(AccountPermissions).__name__)
+
+        # Finally we'll parse the remaining fields and plug everything into a new Customer instance
         try:
             # Format the address
             address = '{}, {} {} {}'.format(
@@ -234,12 +265,14 @@ class Customer:
                 json['billformat'],
                 json['brand'],
                 address,
+                outage_comm_prefs,
                 json['phone'],
                 json['email'],
                 json['payment_method'],
                 json['isSuspended'],
                 json['accountBalanceCents'] / 100,
-                services
+                services,
+                permissions
             )
         except Exception:
             raise Exception('Failed to populate ' + type(Customer).__name__)
@@ -534,3 +567,55 @@ class NBNDetails:
         self.download_potential = download_potential
         self.upload_potential = upload_potential
         self.last_test = last_test
+
+
+class OutageCommunicationPrefs:
+    """
+    A container for a customer's communication preferences.
+    """
+
+    def __init__(self, sms: bool, sms_after_hours: bool, email: bool):
+        """
+        Creates a new instance of OutageCommunicationPrefs.
+        :param sms: SMS
+        :param sms_after_hours: After-hours SMS
+        :param email: Emails
+        """
+        self.sms = sms
+        self.sms_after_hours = sms_after_hours
+        self.email = email
+
+
+class AccountPermissions:
+    """
+    A container for permissions granted to these credentials.
+    """
+
+    def __init__(self, create_payment_plan: bool, update_payment_details: bool, create_contact: bool,
+                 update_contacts: bool, update_customer: bool, change_password: bool, create_tickets: bool,
+                 make_payment: bool, purchase_data_blocks: bool, create_order: bool, view_orders: bool):
+        """
+        Creates a new AccountPermissions instance with the given permissions.
+        :param create_payment_plan: Can create payment plans
+        :param update_payment_details: Can update payment details
+        :param create_contact: Can create contacts
+        :param update_contacts: Can update contacts
+        :param update_customer: Can update customer details
+        :param change_password: Can change password
+        :param create_tickets: Can create support tickets
+        :param make_payment: Can make payments
+        :param purchase_data_blocks: Can purchase extra data
+        :param create_order: Can place orders
+        :param view_orders: Can view orders
+        """
+        self.create_payment_plan = create_payment_plan
+        self.update_payment_details = update_payment_details
+        self.create_contact = create_contact
+        self.update_contacts = update_contacts
+        self.update_customer = update_customer
+        self.change_password = change_password
+        self.create_tickets = create_tickets
+        self.make_payment = make_payment
+        self.purchase_data_blocks = purchase_data_blocks
+        self.create_order = create_order
+        self.view_orders = view_orders
