@@ -51,7 +51,6 @@ class AussieBB:
         :param cache_refresh: Duration in milliseconds data requested from the API is considered current. Anything
                               accessed after this duration will trigger a new API request. Defaults to 120 seconds.
         """
-
         self._cookie_dict = None
         self._refresh_token = None
         self._token_expiry = None
@@ -67,7 +66,6 @@ class AussieBB:
         :param username: Account username
         :param password: Account password
         """
-
         req = requests.post(self.auth_base_url + 'login', json={'username': username, 'password': password})
 
         # Make sure we have a good status code
@@ -101,7 +99,6 @@ class AussieBB:
         :exception Tried to make a request while unauthenticated
         :exception HTTP status code of 400 or higher received
         """
-
         if not self.authenticated:
             raise Exception('Cannot make request while unauthenticated')
 
@@ -124,6 +121,20 @@ class Customer:
 
     def __init__(self, customer_number, billing_name, bill_format, brand, address, phone, emails, payment_method,
                  suspended, balance, services):
+        """
+        Creates a new Customer instance.
+        :param customer_number: Customer number
+        :param billing_name: Billing name
+        :param bill_format: Billing format
+        :param brand: Brand service is sold under
+        :param address: Billing address
+        :param phone: Contact phone number
+        :param emails: Contact emails
+        :param payment_method: Payment method
+        :param suspended: Whether the account is suspended
+        :param balance: Account balance in dollars
+        :param services: List of services under this account
+        """
         self.customer_number = customer_number
         self.billing_name = billing_name
         self.bill_format = bill_format
@@ -140,6 +151,7 @@ class Customer:
     def create(abb_api):
         """
         Creates a new Customer instance containing the customer information associated with the given API instance.
+        :type abb_api: AussieBB API instance
         :return: New Customer for the given API instance
         """
 
@@ -233,7 +245,6 @@ class NBNService:
     An NBN Internet service.
     Everything you need to know about an NBN service can be found in here.
     """
-
     type = 'NBN'
     name = 'NBN'
     contract = None  # <-- What is this?
@@ -272,6 +283,19 @@ class NBNService:
 
     def __init__(self, abb_api, service_id, plan, description, connection_details, next_bill, open_date, rollover_day,
                  ip_addresses, address):
+        """
+        Creates a new NBNService instance with the given details.
+        :param abb_api: AussieBB API instance
+        :param service_id: Service ID
+        :param plan: Plan description
+        :param description: Service description (usually an address)
+        :param connection_details: NBNDetails instance for this service
+        :param next_bill: Next bill date
+        :param open_date: Date the service was opened
+        :param rollover_day: Day of each month that usage rolls over
+        :param ip_addresses: IP addresses allocated to this service
+        :param address: Physical address of this service
+        """
         self._abb_api = abb_api
         self.service_id = service_id
         self.plan = plan
@@ -290,14 +314,22 @@ class NBNService:
         self._historic_usage_updated = 0
 
 
-
 class OverviewServiceUsage:
     """
     Overview usage data for the current month.
     Usage is in megabytes (10^6 bytes).
     """
-
     def __init__(self, total, download, upload, remaining, days_total, days_remaining, last_update):
+        """
+        Creates a new OverviewServiceUsage instance with the given data.
+        :param total: Combined upload and download usage in megabytes
+        :param download: Download usage
+        :param upload: Upload usage
+        :param remaining: Usage remaining
+        :param days_total: Days in usage period
+        :param days_remaining: Days until next usage period
+        :param last_update: Time data was last updated
+        """
         self.total = total
         self.download = download
         self.upload = upload
@@ -307,12 +339,13 @@ class OverviewServiceUsage:
         self.last_update = last_update
 
     @staticmethod
-    def create(abb_api: AussieBB, service: NBNService):
+    def create(abb_api, service):
         """
         Creates a new OverviewServiceUsage instance containing usage overview information associated with the given service.
+        :param abb_api: AussieBB API instance
+        :param service: Service to get data from
         :return: New OverviewServiceUsage for the given service
         """
-
         req = abb_api.authenticated_get('broadband/' + str(service.service_id) + '/usage')
 
         # Unpack the response JSON
@@ -340,22 +373,22 @@ class HistoricUsageDict:
 
     _key_format = '{}-{:0>2}-{:0>2}'
 
-    def __init__(self, abb_api: AussieBB, service: NBNService):
+    def __init__(self, abb_api, service):
         """
         Creates a new HistoricUsageDict instance for the given service.
         :param abb_api: AussieBB API instance
         :param service: Service to request history for
         """
-
         self._abb_api = abb_api
         self._service = service
         self._history = {}
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key):
         """
         Retrieves the usage for a given day, month, or year.
+        :param key: Date string formatted as YYYY-MM-DD, YYYY-MM, or YYYY
+        :return: HistoricUsage instance or list of HistoricUsages depending on date format provided
         """
-
         output = []
         match = re.match(r'^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$', key)  # 4-digit year, optional 1- or 2-digit month, optional 1- or 2-digit day
         if match:
@@ -390,7 +423,7 @@ class HistoricUsageDict:
         else:
             raise KeyError()
 
-    def __setitem__(self, key: str, value: HistoricUsage):
+    def __setitem__(self, key, value):
         """
         Add or update an item within the dictionary.
         All keys must match a YYYY-MM-DD date format.
@@ -398,13 +431,17 @@ class HistoricUsageDict:
         :param value: Value to set
         :exception KeyError: Key format does not match YYYY-MM-DD
         """
-
         if re.match(r'^\d{4}-\d{2}-\d{2}$', key):
             self._history[key] = value
         else:
             raise KeyError()
 
-    def _try_get_date(self, key: str):
+    def _try_get_date(self, key):
+        """
+        Tries to get usage data for the given date, querying the API if a cached version is not available.
+        :param key: Date formatted as YYYY-MM-DD
+        :return: HistoricUsage instance or None if no result
+        """
         if key in self._history:
             return self._history[key]
         else:
@@ -449,6 +486,12 @@ class HistoricUsage:
     """
 
     def __init__(self, date, download=0, upload=0):
+        """
+        Creates a new HistoricUsage instance.
+        :param date: Date the usage data is for
+        :param download: Download usage in megabytes
+        :param upload: Upload usage in megabytes
+        """
         self.date = date
         self.download = download
         self.upload = upload
@@ -459,8 +502,16 @@ class NBNDetails:
     Line details for an NBN service.
     Describes the connection type, POI, and speed potential.
     """
-
     def __init__(self, connection_type, poi, cvc_graph_url, download_potential, upload_potential, last_test):
+        """
+        Creates a new NBNDetails instance.
+        :param connection_type: Physical connection technology type
+        :param poi: Name of the Point-Of-Interconnect that the service is connected to
+        :param cvc_graph_url: URL for the CVC graph image
+        :param download_potential: Potential download speed in megabits-per-second
+        :param upload_potential: Potential upload speed in megabits-per-second
+        :param last_test: Date and time the connection speeds were last updated
+        """
         self.connection_type = connection_type
         self.poi = poi
         self.cvc_graph_url = cvc_graph_url
