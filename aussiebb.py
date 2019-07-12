@@ -373,6 +373,8 @@ class HistoricUsageDict:
 
     _key_format = '{}-{:0>2}-{:0>2}'
 
+    _key_regex = r'^\d{4}-\d{2}-\d{2}$'
+
     def __init__(self, abb_api, service):
         """
         Creates a new HistoricUsageDict instance for the given service.
@@ -431,7 +433,7 @@ class HistoricUsageDict:
         :param value: Value to set
         :exception KeyError: Key format does not match YYYY-MM-DD
         """
-        if re.match(r'^\d{4}-\d{2}-\d{2}$', key):
+        if re.match(self._key_regex, key):
             self._history[key] = value
         else:
             raise KeyError()
@@ -445,7 +447,7 @@ class HistoricUsageDict:
         if key in self._history:
             return self._history[key]
         else:
-            match = re.match(r'^(\d{4})-(\d{2})-(\d{2})', key)
+            match = re.match(self._key_regex, key)
             year = int(match.group(1))
             month = int(match.group(2))
             day = int(match.group(3))
