@@ -176,7 +176,7 @@ class Customer:
                         service['nbnDetails']['cvcGraph'],
                         service['nbnDetails']['speedPotential']['downloadMbps'],
                         service['nbnDetails']['speedPotential']['uploadMbps'],
-                        service['nbnDetails']['speedPotential']['lastTested']
+                        datetime.strptime(service['nbnDetails']['speedPotential']['lastTested'], '%Y-%m-%dT%H:%M:%SZ')
                     )
                 except Exception:
                     raise Exception('Failed to populate ' + type(NBNDetails).__name__)
@@ -203,8 +203,8 @@ class Customer:
                         service['plan'],
                         service['description'],
                         connection_details,
-                        service['nextBillDate'],
-                        service['openDate'],
+                        datetime.strptime(service['nextBillDate'], '%Y-%m-%dT%H:%M:%SZ'),
+                        datetime.strptime(service['openDate'], '%Y-%m-%d'),
                         service['usageAnniversary'],
                         service['ipAddresses'],
                         address
