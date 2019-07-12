@@ -482,8 +482,8 @@ class HistoricUsageDict:
             json = req.json()
 
             # Cache all dates within the response
-            for date in json['data']:
-                self._history[date['date']] = HistoricUsage(date['date'], date['download'], date['upload'])
+            for entry in json['data']:
+                self._history[entry['date']] = HistoricUsage(entry['date'], entry['download'], entry['upload'])
 
             # Check if we have the entry now
             if key in self._history:
