@@ -1,6 +1,11 @@
+from __future__ import annotations  # Delay type hint evaluation because circular dependencies
+
+import calendar
 import re
 import time
-import calendar
+from datetime import datetime
+from typing import Optional
+
 import requests
 
 
@@ -19,7 +24,7 @@ class AussieBB:
     api_base_url = 'https://myaussie-api.aussiebroadband.com.au/'
 
     @property
-    def customer(self):
+    def customer(self) -> Customer:
         """
         The Customer instance associated with the current login.
         :return: The Customer instance associated with the current login
@@ -30,22 +35,22 @@ class AussieBB:
         return self._customer
 
     @customer.setter
-    def customer(self, value):
+    def customer(self, value: Customer):
         self._customer = value
         self._customer_updated = time.time()
 
     @property
-    def services(self):
+    def services(self) -> list:
         """
         An alias for AussieBB.customer.services.
         """
         return self.customer.services
 
     @services.setter
-    def services(self, value):
+    def services(self, value: list):
         self.customer.services = value
 
-    def __init__(self, cache_refresh=120000):
+    def __init__(self, cache_refresh: int = 120000):
         """
         Creates a new Aussie Broadband API instance.
         :param cache_refresh: Duration in milliseconds data requested from the API is considered current. Anything
@@ -60,7 +65,7 @@ class AussieBB:
         self._customer = None
         self._customer_updated = 0
 
-    def login(self, username, password):
+    def login(self, username: str, password: str):
         """
         Attempts to authenticate with the given username and password.
         :param username: Account username
@@ -91,7 +96,7 @@ class AussieBB:
         # Signal that we're authenticated now
         self.authenticated = True
 
-    def authenticated_get(self, path):
+    def authenticated_get(self, path: str) -> requests.api:
         """
         Sends a GET request with the base API URL and given path with authentication cookies
         :param path: Path excluding base API URL
@@ -119,8 +124,8 @@ class Customer:
     Contains everything from postal address and communication preferences to services and account permissions.
     """
 
-    def __init__(self, customer_number, billing_name, bill_format, brand, address, phone, emails, payment_method,
-                 suspended, balance, services):
+    def __init__(self, customer_number: int, billing_name: str, bill_format: int, brand: str, address: str, phone: str,
+                 emails: list, payment_method: str, suspended: bool, balance: float, services: list):
         """
         Creates a new Customer instance.
         :param customer_number: Customer number
@@ -148,7 +153,7 @@ class Customer:
         self.services = services
 
     @staticmethod
-    def create(abb_api):
+    def create(abb_api: AussieBB) -> Customer:
         """
         Creates a new Customer instance containing the customer information associated with the given API instance.
         :type abb_api: AussieBB API instance
@@ -250,7 +255,7 @@ class NBNService:
     contract = None  # <-- What is this?
 
     @property
-    def usage_overview(self):
+    def usage_overview(self) -> OverviewServiceUsage:
         """
         The usage overview for the current month.
         :return: Usage overview for the current month
@@ -261,12 +266,12 @@ class NBNService:
         return self._usage_overview
 
     @usage_overview.setter
-    def usage_overview(self, value):
+    def usage_overview(self, value: OverviewServiceUsage):
         self._usage_overview = value
         self._usage_overview_updated = time.time()
 
     @property
-    def historic_usage(self):
+    def historic_usage(self) -> HistoricUsageDict:
         """
         Usage history.
         :return: Usage history
@@ -277,12 +282,13 @@ class NBNService:
         return self._historic_usage
 
     @historic_usage.setter
-    def historic_usage(self, value):
+    def historic_usage(self, value: HistoricUsageDict):
         self._historic_usage = value
         self._historic_usage_updated = time.time()
 
-    def __init__(self, abb_api, service_id, plan, description, connection_details, next_bill, open_date, rollover_day,
-                 ip_addresses, address):
+    def __init__(self, abb_api: AussieBB, service_id: NBNService, plan: str, description: str,
+                 connection_details: NBNDetails, next_bill: datetime, open_date: datetime, rollover_day: int,
+                 ip_addresses: list, address: str) -> historic_usage:
         """
         Creates a new NBNService instance with the given details.
         :param abb_api: AussieBB API instance
@@ -319,7 +325,8 @@ class OverviewServiceUsage:
     Overview usage data for the current month.
     Usage is in megabytes (10^6 bytes).
     """
-    def __init__(self, total, download, upload, remaining, days_total, days_remaining, last_update):
+    def __init__(self, total: int, download: int, upload: int, remaining: int, days_total: int, days_remaining: int,
+                 last_update: datetime):
         """
         Creates a new OverviewServiceUsage instance with the given data.
         :param total: Combined upload and download usage in megabytes
@@ -339,7 +346,7 @@ class OverviewServiceUsage:
         self.last_update = last_update
 
     @staticmethod
-    def create(abb_api, service):
+    def create(abb_api: AussieBB, service: NBNService) -> OverviewServiceUsage:
         """
         Creates a new OverviewServiceUsage instance containing usage overview information associated with the given service.
         :param abb_api: AussieBB API instance
@@ -375,7 +382,7 @@ class HistoricUsageDict:
 
     _key_regex = r'^\d{4}-\d{2}-\d{2}$'
 
-    def __init__(self, abb_api, service):
+    def __init__(self, abb_api: AussieBB, service: NBNService):
         """
         Creates a new HistoricUsageDict instance for the given service.
         :param abb_api: AussieBB API instance
@@ -385,7 +392,7 @@ class HistoricUsageDict:
         self._service = service
         self._history = {}
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> list:
         """
         Retrieves the usage for a given day, month, or year.
         :param key: Date string formatted as YYYY-MM-DD, YYYY-MM, or YYYY
@@ -431,7 +438,7 @@ class HistoricUsageDict:
         else:
             raise KeyError()
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: HistoricUsage):
         """
         Add or update an item within the dictionary.
         All keys must match a YYYY-MM-DD date format.
@@ -444,7 +451,7 @@ class HistoricUsageDict:
         else:
             raise KeyError()
 
-    def _try_get_date(self, key):
+    def _try_get_date(self, key: str) -> Optional[HistoricUsage]:
         """
         Tries to get usage data for the given date, querying the API if a cached version is not available.
         :param key: Date formatted as YYYY-MM-DD
@@ -493,7 +500,7 @@ class HistoricUsage:
     Usage is in megabytes (10^6 bytes)
     """
 
-    def __init__(self, date, download=0, upload=0):
+    def __init__(self, date: datetime, download: int = 0, upload: int = 0):
         """
         Creates a new HistoricUsage instance.
         :param date: Date the usage data is for
@@ -510,7 +517,8 @@ class NBNDetails:
     Line details for an NBN service.
     Describes the connection type, POI, and speed potential.
     """
-    def __init__(self, connection_type, poi, cvc_graph_url, download_potential, upload_potential, last_test):
+    def __init__(self, connection_type: str, poi: str, cvc_graph_url: str, download_potential: int,
+                 upload_potential: int, last_test: datetime):
         """
         Creates a new NBNDetails instance.
         :param connection_type: Physical connection technology type
